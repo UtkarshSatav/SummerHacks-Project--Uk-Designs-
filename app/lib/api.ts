@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-export const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 async function getHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
