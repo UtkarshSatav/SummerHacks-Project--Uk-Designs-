@@ -41,4 +41,12 @@ def analyse_pricing(description: str, client_type: str, profile: dict) -> dict:
         lines = raw.split("\n")
         raw = "\n".join(lines[1:-1]) if len(lines) > 2 else raw
 
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Extract first {...} block if model wrapped response in extra text
+        import re
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        raise ValueError(f"AI returned non-JSON: {raw[:200]}")

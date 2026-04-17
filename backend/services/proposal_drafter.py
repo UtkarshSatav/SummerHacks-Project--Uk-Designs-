@@ -42,14 +42,20 @@ def draft_proposal(lead_id: str = None, client_id: str = None, extra_context: st
 
     context = {}
     if lead_id:
-        lead = db.table("leads").select("*").eq("id", lead_id).execute().data[0]
+        rows = db.table("leads").select("*").eq("id", lead_id).execute().data
+        if not rows:
+            return {"subject": "Proposal", "content": f"Lead {lead_id} not found."}
+        lead = rows[0]
         context = {
             "platform": lead.get("platform", "reddit"),
             "title": lead.get("title", ""),
-            "body": lead.get("body", "")[:800],
+            "body": (lead.get("body") or "")[:800],
         }
     elif client_id:
-        cl = db.table("clients").select("*").eq("id", client_id).execute().data[0]
+        rows = db.table("clients").select("*").eq("id", client_id).execute().data
+        if not rows:
+            return {"subject": "Proposal", "content": f"Client {client_id} not found."}
+        cl = rows[0]
         context = {
             "platform": "direct client",
             "title": f"Phase 2 proposal for {cl.get('project_name', 'project')}",
@@ -66,7 +72,7 @@ def draft_proposal(lead_id: str = None, client_id: str = None, extra_context: st
         name=profile.get("name", ""),
         experience=profile.get("experience", "senior"),
         niche=profile.get("niche", ""),
-        skills=", ".join(profile.get("skills", [])),
+        skills=", ".join(profile.get("skills") or []),
         extra_context=extra_context if extra_context else "None provided.",
         **context,
     )
