@@ -40,9 +40,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Ghost API", version="1.0.0", redirect_slashes=False, lifespan=lifespan)
 
+import os
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "")
+
+allow_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://summer-hacks-project-uk-designs-zks.vercel.app",
+]
+if FRONTEND_URL and FRONTEND_URL not in allow_origins:
+    allow_origins.append(FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
