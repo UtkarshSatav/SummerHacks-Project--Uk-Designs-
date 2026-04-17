@@ -45,34 +45,20 @@ import os
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 
-allow_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://summer-hacks-project-uk-designs-zks.vercel.app",
-]
-if FRONTEND_URL and FRONTEND_URL not in allow_origins:
-    allow_origins.append(FRONTEND_URL)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    origin = request.headers.get("origin", "")
-    headers = {}
-    if origin in allow_origins:
-        headers["Access-Control-Allow-Origin"] = origin
-        headers["Access-Control-Allow-Credentials"] = "true"
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc)},
-        headers=headers,
-    )
+    import traceback
+    print(f"[ERROR] {request.method} {request.url.path} → {type(exc).__name__}: {exc}")
+    print(traceback.format_exc())
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
