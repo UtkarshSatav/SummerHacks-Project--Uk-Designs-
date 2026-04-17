@@ -87,3 +87,16 @@ app.include_router(seed.router, prefix="/seed", tags=["seed"])
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "ghost-api"}
+
+
+@app.get("/debug")
+def debug():
+    """Temporary debug endpoint — remove after fixing."""
+    import traceback
+    try:
+        from database import get_supabase
+        db = get_supabase()
+        r = db.table("profiles").select("id, user_id").limit(3).execute()
+        return {"supabase": "ok", "profiles": r.data}
+    except Exception as e:
+        return {"supabase": "FAILED", "error": str(e), "trace": traceback.format_exc()}
