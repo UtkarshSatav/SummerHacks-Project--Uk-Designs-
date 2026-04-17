@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -59,6 +60,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in allow_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers=headers,
+    )
+
 
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
 app.include_router(leads.router, prefix="/leads", tags=["leads"])
