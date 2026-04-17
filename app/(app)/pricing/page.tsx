@@ -413,7 +413,7 @@ export default function PricingPage() {
         method: "POST",
         body: JSON.stringify({ project_description: description, client_type: clientType }),
       });
-      setResult(await res.json());
+      if (res.ok) setResult(await res.json());
     } catch { /* ignore */ }
     finally { setLoading(false); }
   };
