@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -45,6 +46,20 @@ import os
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 
+class CatchAllMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        import traceback
+        try:
+            return await call_next(request)
+        except Exception as e:
+            print(f"[ERROR] {request.method} {request.url.path} → {type(e).__name__}: {e}")
+            print(traceback.format_exc())
+            return JSONResponse(status_code=500, content={"detail": str(e)})
+
+# Order matters: CORSMiddleware added AFTER CatchAllMiddleware
+# → CORSMiddleware becomes outermost, CatchAllMiddleware is inner
+# → Exceptions caught by CatchAll return a JSONResponse that CORSMiddleware adds headers to
+app.add_middleware(CatchAllMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,13 +67,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    print(f"[ERROR] {request.method} {request.url.path} → {type(exc).__name__}: {exc}")
-    print(traceback.format_exc())
-    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
