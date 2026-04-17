@@ -93,10 +93,13 @@ def health():
 def debug():
     """Temporary debug endpoint — remove after fixing."""
     import traceback
-    try:
-        from database import get_supabase
-        db = get_supabase()
-        r = db.table("profiles").select("id, user_id").limit(3).execute()
-        return {"supabase": "ok", "profiles": r.data}
-    except Exception as e:
-        return {"supabase": "FAILED", "error": str(e), "trace": traceback.format_exc()}
+    from database import get_supabase
+    results = {}
+    for table in ["profiles", "leads", "clients", "proposals", "daily_briefs"]:
+        try:
+            db = get_supabase()
+            r = db.table(table).select("id").limit(1).execute()
+            results[table] = f"ok ({len(r.data)} rows returned)"
+        except Exception as e:
+            results[table] = f"ERROR: {e}"
+    return results
