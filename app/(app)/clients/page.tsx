@@ -1,7 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, MouseEvent } from "react";
+import { toast } from "sonner";
+import { apiFetch } from "../../lib/api";
+import {
+  Plus,
+  Users,
+  AlertTriangle,
+  Copy,
+  Check,
+  MessageSquarePlus,
+  X,
+  ChevronRight,
+} from "lucide-react";
 
+// ---------- Types ----------
 type Client = {
   id: string;
   name: string;
@@ -20,162 +33,239 @@ type Client = {
   suggested_action: string;
 };
 
-const HEALTH_COLORS = {
-  healthy:  { bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)",   text: "#22c55e",  label: "Healthy" },
-  at_risk:  { bg: "rgba(234,179,8,0.1)",   border: "rgba(234,179,8,0.25)",   text: "#facc15",  label: "At Risk" },
-  critical: { bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)",   text: "#f87171",  label: "Critical" },
-};
+// ---------- Ghost Card ----------
+function GhostCard({
+  children,
+  criticalBorder,
+}: {
+  children: React.ReactNode;
+  criticalBorder?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [spot, setSpot] = useState({ x: 50, y: 50, on: false });
 
-const PAYMENT_LABELS: Record<string, { text: string; color: string }> = {
-  current:  { text: "Paid",     color: "#22c55e" },
-  overdue:  { text: "Overdue",  color: "#f87171" },
-  at_risk:  { text: "At Risk",  color: "#facc15" },
-};
-
-function HealthBar({ score, status }: { score: number; status: string }) {
-  const colors = HEALTH_COLORS[status as keyof typeof HEALTH_COLORS] || HEALTH_COLORS.healthy;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-      <div style={{ flex: 1, height: "6px", backgroundColor: "#1e1e1e", borderRadius: "3px", overflow: "hidden" }}>
-        <div style={{
-          width: `${score}%`, height: "100%", borderRadius: "3px",
-          backgroundColor: colors.text,
-          transition: "width 0.5s ease",
-        }} />
-      </div>
-      <span style={{ fontSize: "13px", fontWeight: "700", color: colors.text, minWidth: "32px" }}>{score}</span>
-    </div>
-  );
-}
-
-function ClientCard({ client, onEdit }: { client: Client; onEdit: (c: Client) => void }) {
-  const health = HEALTH_COLORS[client.health_status] || HEALTH_COLORS.healthy;
-  const payment = PAYMENT_LABELS[client.payment_status] || PAYMENT_LABELS.current;
-  const [expanded, setExpanded] = useState(false);
-
-  const daysSince = () => {
-    const d = new Date(client.last_contact_date);
-    const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
-    return diff;
+  const onMove = (e: MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setSpot({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100, on: true });
   };
 
   return (
-    <div style={{
-      backgroundColor: "#111", border: `1px solid ${client.health_status === "critical" ? "rgba(239,68,68,0.3)" : "#1e1e1e"}`,
-      borderRadius: "12px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px",
-      transition: "border-color 0.15s",
-    }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "15px", fontWeight: "600", color: "#e5e5e5" }}>{client.name}</span>
-            {client.company && (
-              <span style={{ fontSize: "12px", color: "#555" }}>· {client.company}</span>
-            )}
-            <span style={{
-              fontSize: "11px", padding: "2px 8px", borderRadius: "20px",
-              backgroundColor: health.bg, border: `1px solid ${health.border}`, color: health.text,
-              fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.4px",
-            }}>
-              {health.label}
-            </span>
-          </div>
-          <p style={{ fontSize: "13px", color: "#666", margin: 0 }}>{client.project_name}</p>
-        </div>
-        {client.total_value && (
-          <div style={{ fontSize: "14px", fontWeight: "700", color: "#a78bfa", flexShrink: 0 }}>
-            ₹{client.total_value.toLocaleString()}
-          </div>
-        )}
-      </div>
-
-      {/* Health bar */}
-      <HealthBar score={client.health_score} status={client.health_status} />
-
-      {/* Stats row */}
-      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-        <div style={{ fontSize: "12px", color: "#555" }}>
-          <span style={{ color: "#888" }}>Completion:</span>{" "}
-          <span style={{ color: "#ccc", fontWeight: "600" }}>{client.project_completion_pct}%</span>
-        </div>
-        <div style={{ fontSize: "12px", color: "#555" }}>
-          <span style={{ color: "#888" }}>Payment:</span>{" "}
-          <span style={{ color: payment.color, fontWeight: "600" }}>{payment.text}</span>
-        </div>
-        <div style={{ fontSize: "12px", color: "#555" }}>
-          <span style={{ color: "#888" }}>Last contact:</span>{" "}
-          <span style={{ color: daysSince() > 7 ? "#f87171" : "#ccc", fontWeight: "600" }}>
-            {daysSince() === 0 ? "Today" : `${daysSince()}d ago`}
-          </span>
-        </div>
-      </div>
-
-      {/* Flags */}
-      {client.health_flags.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {client.health_flags.map((flag, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-              <span style={{ color: "#f87171", fontSize: "12px", flexShrink: 0, marginTop: "1px" }}>⚠</span>
-              <span style={{ fontSize: "12px", color: "#f87171" }}>{flag}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Opportunities */}
-      {client.opportunities.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {client.opportunities.map((opp, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-              <span style={{ color: "#22c55e", fontSize: "12px", flexShrink: 0, marginTop: "1px" }}>✦</span>
-              <span style={{ fontSize: "12px", color: "#22c55e" }}>{opp}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Suggested action */}
-      <div style={{ backgroundColor: "#0f0f0f", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1a1a1a" }}>
-        <div style={{ fontSize: "11px", color: "#444", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "3px" }}>Ghost says</div>
-        <p style={{ fontSize: "13px", color: "#888", margin: 0 }}>{client.suggested_action}</p>
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: "8px" }}>
-        <button
-          onClick={() => onEdit(client)}
-          style={{ flex: 1, padding: "9px 0", borderRadius: "8px", border: "1px solid #2a2a2a", backgroundColor: "transparent", color: "#888", fontSize: "13px", cursor: "pointer" }}
-        >
-          Edit
-        </button>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          style={{ flex: 1, padding: "9px 0", borderRadius: "8px", border: "none", backgroundColor: "#7c3aed", color: "#fff", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
-        >
-          {expanded ? "Hide Notes" : "View Notes"}
-        </button>
-      </div>
-
-      {expanded && client.notes && (
-        <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: "12px" }}>
-          <p style={{ fontSize: "13px", color: "#666", margin: 0, lineHeight: "1.6" }}>{client.notes}</p>
-        </div>
-      )}
+    <div
+      ref={ref}
+      onMouseMove={onMove}
+      onMouseLeave={() => setSpot(s => ({ ...s, on: false }))}
+      className="relative rounded-2xl border"
+      style={{
+        background: "#0c0c0c",
+        borderColor: criticalBorder ? "rgba(239,68,68,0.25)" : "rgba(240,237,230,0.07)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 transition-opacity duration-500"
+        style={{
+          opacity: spot.on ? 1 : 0,
+          background: `radial-gradient(400px circle at ${spot.x}% ${spot.y}%, rgba(168,85,247,0.09), transparent 65%)`,
+        }}
+      />
+      {children}
     </div>
   );
 }
 
+// ---------- Health config ----------
+const HEALTH = {
+  healthy:  { label: "Healthy",  text: "rgba(52,211,153,0.9)",  bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.2)"  },
+  at_risk:  { label: "At Risk",  text: "rgba(234,179,8,0.9)",   bg: "rgba(234,179,8,0.08)",   border: "rgba(234,179,8,0.2)"   },
+  critical: { label: "Critical", text: "rgba(239,68,68,0.9)",   bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.2)"   },
+};
+
+// ---------- Client Card ----------
+function ClientCard({
+  client,
+  onEdit,
+  onOutreach,
+}: {
+  client: Client;
+  onEdit: (c: Client) => void;
+  onOutreach: (c: Client) => void;
+}) {
+  const h = HEALTH[client.health_status] ?? HEALTH.healthy;
+  const daysSince = Math.floor((Date.now() - new Date(client.last_contact_date).getTime()) / 86400000);
+  const needsOutreach = client.health_status === "at_risk" || client.health_status === "critical";
+
+  return (
+    <GhostCard criticalBorder={client.health_status === "critical"}>
+      <div className="p-5 flex flex-col gap-4">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-sm font-medium" style={{ color: "#f0ede6" }}>{client.name}</span>
+              {client.company && (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "rgba(240,237,230,0.28)" }}>
+                  {client.company}
+                </span>
+              )}
+            </div>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", letterSpacing: "0.03em", color: "rgba(240,237,230,0.35)" }}>
+              {client.project_name}
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <span
+              className="rounded-full px-2.5 py-0.5"
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.62rem",
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: h.text,
+                background: h.bg,
+                border: `1px solid ${h.border}`,
+              }}
+            >
+              {h.label}
+            </span>
+            {client.total_value && (
+              <span
+                style={{
+                  fontFamily: "var(--font-impact-stack)",
+                  fontSize: "1.3rem",
+                  letterSpacing: "-0.02em",
+                  color: "rgba(168,85,247,0.7)",
+                  lineHeight: 1,
+                }}
+              >
+                ₹{client.total_value.toLocaleString()}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Health bar */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(240,237,230,0.06)" }}>
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${client.health_score}%`, background: h.text }}
+            />
+          </div>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem", color: h.text, minWidth: "26px", textAlign: "right" }}>
+            {client.health_score}
+          </span>
+        </div>
+
+        {/* Stats */}
+        <div className="flex flex-wrap gap-x-5 gap-y-1">
+          <div>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(240,237,230,0.22)" }}>Completion </span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(240,237,230,0.65)" }}>{client.project_completion_pct}%</span>
+          </div>
+          <div>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(240,237,230,0.22)" }}>Contact </span>
+            <span style={{
+              fontFamily: "var(--font-mono)", fontSize: "0.72rem",
+              color: daysSince > 14 ? "rgba(239,68,68,0.75)" : "rgba(240,237,230,0.65)",
+            }}>
+              {daysSince === 0 ? "Today" : `${daysSince}d ago`}
+            </span>
+          </div>
+          <div>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(240,237,230,0.22)" }}>Payment </span>
+            <span style={{
+              fontFamily: "var(--font-mono)", fontSize: "0.72rem",
+              color: client.payment_status === "overdue" ? "rgba(239,68,68,0.75)" : client.payment_status === "at_risk" ? "rgba(234,179,8,0.75)" : "rgba(52,211,153,0.75)",
+            }}>
+              {client.payment_status === "current" ? "Paid" : client.payment_status === "overdue" ? "Overdue" : "At Risk"}
+            </span>
+          </div>
+        </div>
+
+        {/* Flags */}
+        {client.health_flags.length > 0 && (
+          <div className="space-y-1.5">
+            {client.health_flags.map((flag, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" style={{ color: "rgba(239,68,68,0.6)" }} />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.02em", color: "rgba(239,68,68,0.75)" }}>{flag}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Opportunities */}
+        {client.opportunities.length > 0 && (
+          <div className="space-y-1.5">
+            {client.opportunities.map((opp, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span style={{ color: "rgba(52,211,153,0.7)", fontSize: "11px", flexShrink: 0, lineHeight: "20px" }}>✦</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "rgba(52,211,153,0.75)" }}>{opp}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Ghost says */}
+        <div
+          className="rounded-xl border px-3 py-2.5"
+          style={{ background: "rgba(168,85,247,0.04)", borderColor: "rgba(168,85,247,0.1)" }}
+        >
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(168,85,247,0.45)", marginBottom: "3px" }}>
+            Ghost says
+          </p>
+          <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "rgba(240,237,230,0.45)", lineHeight: 1.5 }}>
+            {client.suggested_action}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-0.5">
+          <button
+            onClick={() => onEdit(client)}
+            className="rounded-xl border px-4 py-2.5 transition-all duration-200 hover:border-[rgba(240,237,230,0.15)] hover:bg-[rgba(240,237,230,0.03)]"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.72rem",
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: "rgba(240,237,230,0.35)",
+              borderColor: "rgba(240,237,230,0.08)",
+              background: "transparent",
+            }}
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onOutreach(client)}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 transition-all duration-200"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.72rem",
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: needsOutreach ? (client.health_status === "critical" ? "rgba(239,68,68,0.9)" : "rgba(234,179,8,0.9)") : "rgba(240,237,230,0.35)",
+              background: needsOutreach ? (client.health_status === "critical" ? "rgba(239,68,68,0.08)" : "rgba(234,179,8,0.07)") : "transparent",
+              borderColor: needsOutreach ? (client.health_status === "critical" ? "rgba(239,68,68,0.2)" : "rgba(234,179,8,0.2)") : "rgba(240,237,230,0.08)",
+            }}
+          >
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+            Re-engage
+          </button>
+        </div>
+      </div>
+    </GhostCard>
+  );
+}
+
+// ---------- Client Form Modal ----------
 type FormData = {
-  name: string;
-  company: string;
-  project_name: string;
-  project_status: string;
-  project_completion_pct: string;
-  payment_status: string;
-  total_value: string;
-  last_contact_date: string;
-  notes: string;
+  name: string; company: string; project_name: string; project_status: string;
+  project_completion_pct: string; payment_status: string; total_value: string;
+  last_contact_date: string; notes: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -184,11 +274,16 @@ const EMPTY_FORM: FormData = {
   total_value: "", last_contact_date: new Date().toISOString().split("T")[0], notes: "",
 };
 
-function AddClientModal({ onClose, onSave }: { onClose: () => void; onSave: () => void }) {
-  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+function ClientFormModal({
+  onClose, onSave, initialData, clientId, title, submitLabel,
+}: {
+  onClose: () => void; onSave: () => void; initialData?: FormData;
+  clientId?: string; title: string; submitLabel: string;
+}) {
+  const [form, setForm] = useState<FormData>(initialData || EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
+  const isEdit = !!clientId;
   const set = (k: keyof FormData, v: string) => setForm(p => ({ ...p, [k]: v }));
 
   const handleSubmit = async () => {
@@ -196,121 +291,111 @@ function AddClientModal({ onClose, onSave }: { onClose: () => void; onSave: () =
       setError("Name, project name, and last contact date are required.");
       return;
     }
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
       const payload: Record<string, unknown> = {
-        name: form.name,
-        project_name: form.project_name,
+        name: form.name, project_name: form.project_name,
         project_status: form.project_status,
         project_completion_pct: parseInt(form.project_completion_pct) || 0,
-        payment_status: form.payment_status,
-        last_contact_date: form.last_contact_date,
+        payment_status: form.payment_status, last_contact_date: form.last_contact_date,
       };
       if (form.company) payload.company = form.company;
       if (form.total_value) payload.total_value = parseInt(form.total_value);
       if (form.notes) payload.notes = form.notes;
 
-      const res = await fetch("http://localhost:8000/clients/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await apiFetch(isEdit ? `/clients/${clientId}` : "/clients/", {
+        method: isEdit ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to save client");
-      onSave();
-      onClose();
-    } catch {
-      setError("Failed to save. Is the backend running?");
-    } finally {
-      setSaving(false);
-    }
+      if (!res.ok) throw new Error();
+      toast.success(isEdit ? `${form.name} updated` : `${form.name} added`);
+      onSave(); onClose();
+    } catch { setError("Failed to save."); }
+    finally { setSaving(false); }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%", backgroundColor: "#0f0f0f", border: "1px solid #2a2a2a",
-    borderRadius: "8px", padding: "10px 12px", color: "#e5e5e5", fontSize: "14px",
-    outline: "none", boxSizing: "border-box",
+  const inp: React.CSSProperties = {
+    width: "100%", background: "#111",
+    border: "1px solid rgba(240,237,230,0.1)",
+    borderRadius: "10px", padding: "10px 14px",
+    color: "#f0ede6", fontSize: "14px", outline: "none",
+    boxSizing: "border-box", fontFamily: "inherit",
   };
-  const labelStyle: React.CSSProperties = {
-    fontSize: "12px", color: "#555", fontWeight: "600",
-    textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px", display: "block",
+  const lbl: React.CSSProperties = {
+    fontFamily: "var(--font-mono)", fontSize: "0.65rem",
+    letterSpacing: "0.25em", textTransform: "uppercase",
+    color: "rgba(240,237,230,0.3)", marginBottom: "6px", display: "block",
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.8)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px",
-    }}>
-      <div style={{
-        backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: "16px",
-        padding: "32px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto",
-        display: "flex", flexDirection: "column", gap: "20px",
-      }}>
-        <div>
-          <h2 style={{ fontSize: "18px", fontWeight: "700", color: "#fff", margin: "0 0 4px" }}>Add Client</h2>
-          <p style={{ fontSize: "13px", color: "#555", margin: 0 }}>Ghost will monitor their health and alert you.</p>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-5"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-2xl border p-7 space-y-5"
+        style={{ background: "#0c0c0c", borderColor: "rgba(240,237,230,0.09)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 style={{ fontFamily: "var(--font-disp)", fontSize: "1.8rem", fontWeight: 300, fontStyle: "italic", color: "#f0ede6", margin: 0 }}>{title}</h2>
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem", letterSpacing: "0.1em", color: "rgba(240,237,230,0.22)", marginTop: "4px" }}>
+              Ghost will monitor their health and alert you.
+            </p>
+          </div>
+          <button onClick={onClose} style={{ color: "rgba(240,237,230,0.3)", background: "none", border: "none", cursor: "pointer", padding: "4px", flexShrink: 0 }}>
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>Client Name *</label>
-            <input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} placeholder="Alex Johnson" />
-          </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2"><label style={lbl}>Client Name *</label><input style={inp} value={form.name} onChange={e => set("name", e.target.value)} placeholder="Alex Johnson" /></div>
+          <div><label style={lbl}>Company</label><input style={inp} value={form.company} onChange={e => set("company", e.target.value)} placeholder="Acme Inc" /></div>
+          <div><label style={lbl}>Project Value (₹)</label><input style={inp} type="number" value={form.total_value} onChange={e => set("total_value", e.target.value)} placeholder="150000" /></div>
+          <div className="col-span-2"><label style={lbl}>Project Name *</label><input style={inp} value={form.project_name} onChange={e => set("project_name", e.target.value)} placeholder="E-commerce redesign" /></div>
           <div>
-            <label style={labelStyle}>Company</label>
-            <input style={inputStyle} value={form.company} onChange={e => set("company", e.target.value)} placeholder="Acme Inc" />
-          </div>
-          <div>
-            <label style={labelStyle}>Project Value (₹)</label>
-            <input style={inputStyle} type="number" value={form.total_value} onChange={e => set("total_value", e.target.value)} placeholder="150000" />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>Project Name *</label>
-            <input style={inputStyle} value={form.project_name} onChange={e => set("project_name", e.target.value)} placeholder="E-commerce redesign" />
-          </div>
-          <div>
-            <label style={labelStyle}>Project Status</label>
-            <select style={inputStyle} value={form.project_status} onChange={e => set("project_status", e.target.value)}>
+            <label style={lbl}>Project Status</label>
+            <select style={inp} value={form.project_status} onChange={e => set("project_status", e.target.value)}>
               <option value="active">Active</option>
               <option value="stalled">Stalled</option>
               <option value="completed">Completed</option>
             </select>
           </div>
+          <div><label style={lbl}>Completion %</label><input style={inp} type="number" min="0" max="100" value={form.project_completion_pct} onChange={e => set("project_completion_pct", e.target.value)} /></div>
           <div>
-            <label style={labelStyle}>Completion %</label>
-            <input style={inputStyle} type="number" min="0" max="100" value={form.project_completion_pct} onChange={e => set("project_completion_pct", e.target.value)} />
-          </div>
-          <div>
-            <label style={labelStyle}>Payment Status</label>
-            <select style={inputStyle} value={form.payment_status} onChange={e => set("payment_status", e.target.value)}>
+            <label style={lbl}>Payment Status</label>
+            <select style={inp} value={form.payment_status} onChange={e => set("payment_status", e.target.value)}>
               <option value="current">Current</option>
               <option value="overdue">Overdue</option>
               <option value="at_risk">At Risk</option>
             </select>
           </div>
-          <div>
-            <label style={labelStyle}>Last Contact Date *</label>
-            <input style={inputStyle} type="date" value={form.last_contact_date} onChange={e => set("last_contact_date", e.target.value)} />
-          </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>Notes</label>
-            <textarea
-              style={{ ...inputStyle, resize: "vertical", minHeight: "72px" }}
-              value={form.notes}
-              onChange={e => set("notes", e.target.value)}
-              placeholder="Project context, communication style, important details..."
-            />
+          <div><label style={lbl}>Last Contact Date *</label><input style={inp} type="date" value={form.last_contact_date} onChange={e => set("last_contact_date", e.target.value)} /></div>
+          <div className="col-span-2">
+            <label style={lbl}>Notes</label>
+            <textarea style={{ ...inp, resize: "vertical", minHeight: "72px" }} value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Context, communication style, important details..." />
           </div>
         </div>
 
-        {error && <p style={{ fontSize: "13px", color: "#f87171", margin: 0 }}>{error}</p>}
+        {error && <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(239,68,68,0.8)" }}>{error}</p>}
 
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "1px solid #2a2a2a", backgroundColor: "transparent", color: "#888", fontSize: "14px", cursor: "pointer" }}>
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border py-3 transition-all duration-200 hover:border-[rgba(240,237,230,0.15)]"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(240,237,230,0.35)", borderColor: "rgba(240,237,230,0.08)", background: "transparent" }}
+          >
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={saving} style={{ flex: 1, padding: "12px", borderRadius: "8px", border: "none", backgroundColor: "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600", cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
-            {saving ? "Saving..." : "Add Client"}
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="flex-1 rounded-xl py-3 transition-all duration-200 hover:opacity-90 disabled:opacity-50"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "0.75rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "#090909", background: "#f0ede6", border: "none" }}
+          >
+            {saving ? "Saving..." : submitLabel}
           </button>
         </div>
       </div>
@@ -318,15 +403,212 @@ function AddClientModal({ onClose, onSave }: { onClose: () => void; onSave: () =
   );
 }
 
+// ---------- Outreach Panel (custom slide-in) ----------
+function OutreachPanel({
+  client,
+  onClose,
+}: {
+  client: Client | null;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<{ subject: string; content: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!client) return;
+    setDraft(null);
+    setError(false);
+    setLoading(true);
+    apiFetch(`/clients/${client.id}/outreach`, { method: "POST" })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.subject || d?.content) setDraft(d);
+        else setError(true);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [client]);
+
+  const handleCopy = () => {
+    if (!draft) return;
+    navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.content}`);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!client) return null;
+  const h = HEALTH[client.health_status] ?? HEALTH.healthy;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50"
+        style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)" }}
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div
+        className="fixed right-0 top-0 z-50 h-full w-full max-w-[500px] flex flex-col"
+        style={{
+          background: "#0c0c0c",
+          borderLeft: "1px solid rgba(240,237,230,0.08)",
+          boxShadow: "-20px 0 60px rgba(0,0,0,0.5)",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-start justify-between p-6 pb-5"
+          style={{ borderBottom: "1px solid rgba(240,237,230,0.06)" }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl mt-0.5"
+              style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.2)" }}
+            >
+              <MessageSquarePlus className="h-4 w-4" style={{ color: "rgba(168,85,247,0.9)" }} />
+            </div>
+            <div>
+              <h2
+                style={{
+                  fontFamily: "var(--font-disp)",
+                  fontSize: "1.7rem",
+                  fontWeight: 300,
+                  fontStyle: "italic",
+                  color: "#f0ede6",
+                  lineHeight: 1.1,
+                  margin: 0,
+                }}
+              >
+                Re-engage {client.name}
+              </h2>
+              <p
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.7rem",
+                  letterSpacing: "0.1em",
+                  color: "rgba(240,237,230,0.3)",
+                  marginTop: "4px",
+                }}
+              >
+                {client.project_name}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 rounded-lg p-1.5 transition-colors hover:bg-[rgba(240,237,230,0.06)]"
+            style={{ color: "rgba(240,237,230,0.3)", background: "none", border: "none", cursor: "pointer" }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* Why Ghost flagged this */}
+          <div
+            className="rounded-xl border p-4"
+            style={{ background: "#111", borderColor: "rgba(240,237,230,0.07)" }}
+          >
+            <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.25em", textTransform: "uppercase", color: "rgba(240,237,230,0.22)", marginBottom: "10px" }}>
+              Why Ghost flagged this
+            </p>
+            <div className="space-y-2">
+              {client.health_flags.length > 0
+                ? client.health_flags.map((flag, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: h.text }} />
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(240,237,230,0.55)" }}>{flag}</span>
+                    </div>
+                  ))
+                : <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(240,237,230,0.3)" }}>Routine check-in recommended.</span>
+              }
+              {client.suggested_action && (
+                <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(240,237,230,0.06)" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(168,85,247,0.45)" }}>Ghost recommends: </span>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(168,85,247,0.65)" }}>{client.suggested_action}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Loading */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-14 gap-4">
+              <div
+                className="h-9 w-9 rounded-full border-2 animate-spin"
+                style={{ borderColor: "rgba(168,85,247,0.2)", borderTopColor: "rgba(168,85,247,0.8)" }}
+              />
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem", letterSpacing: "0.25em", textTransform: "uppercase", color: "rgba(240,237,230,0.25)" }}>
+                Ghost is writing...
+              </span>
+            </div>
+          )}
+
+          {/* Error */}
+          {!loading && error && (
+            <div className="flex flex-col items-center justify-center py-14 gap-3">
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "rgba(239,68,68,0.6)", textAlign: "center" }}>
+                Failed to generate message. Check that the backend is running.
+              </p>
+            </div>
+          )}
+
+          {/* Draft */}
+          {!loading && !error && draft && (
+            <div className="space-y-4">
+              <div
+                className="rounded-xl border p-4"
+                style={{ background: "#111", borderColor: "rgba(240,237,230,0.07)" }}
+              >
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(240,237,230,0.25)", marginBottom: "6px" }}>Subject</p>
+                <p style={{ color: "#f0ede6", fontSize: "14px", fontWeight: 500, lineHeight: 1.4 }}>{draft.subject}</p>
+              </div>
+              <div
+                className="rounded-xl border p-4"
+                style={{ background: "#111", borderColor: "rgba(240,237,230,0.07)" }}
+              >
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.28em", textTransform: "uppercase", color: "rgba(240,237,230,0.25)", marginBottom: "10px" }}>Message</p>
+                <p style={{ color: "rgba(240,237,230,0.8)", fontSize: "14px", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{draft.content}</p>
+              </div>
+              <button
+                onClick={handleCopy}
+                className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 transition-all duration-200 hover:opacity-90"
+                style={{
+                  fontFamily: "var(--font-mono)", fontSize: "0.78rem", letterSpacing: "0.2em", textTransform: "uppercase",
+                  background: copied ? "rgba(52,211,153,0.12)" : "#f0ede6",
+                  color: copied ? "rgba(52,211,153,0.9)" : "#090909",
+                  border: copied ? "1px solid rgba(52,211,153,0.25)" : "none",
+                }}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied!" : "Copy to Clipboard"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---------- Main ----------
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [outreachClient, setOutreachClient] = useState<Client | null>(null);
 
   const fetchClients = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/clients/");
+      const res = await apiFetch("/clients/");
       const data = await res.json();
       setClients(Array.isArray(data) ? data : []);
     } catch { setClients([]); }
@@ -340,68 +622,138 @@ export default function ClientsPage() {
   const healthy  = clients.filter(c => c.health_status === "healthy");
 
   return (
-    <div style={{ padding: "40px 48px", maxWidth: "1100px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "32px" }}>
+    <div className="px-6 py-10 lg:px-10 lg:py-12 space-y-10">
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 style={{ fontSize: "26px", fontWeight: "700", color: "#fff", margin: 0 }}>Client Health</h1>
-          <p style={{ color: "#555", fontSize: "14px", marginTop: "6px" }}>
-            Ghost monitors every client relationship and flags churn risks early.
-          </p>
+          <h1
+            className="leading-tight mb-2"
+            style={{
+              fontFamily: "var(--font-disp)",
+              fontSize: "clamp(2.8rem, 4vw, 4.4rem)",
+              fontWeight: 300,
+              fontStyle: "italic",
+              color: "#f0ede6",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Client Health
+          </h1>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.72rem",
+              letterSpacing: "0.25em",
+              textTransform: "uppercase",
+              color: "rgba(240,237,230,0.28)",
+            }}
+          >
+            Ghost monitors every relationship and flags churn risks early
+          </span>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{ padding: "11px 22px", borderRadius: "8px", border: "none", backgroundColor: "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}
-        >
-          + Add Client
-        </button>
+        <div className="flex items-center gap-3 flex-shrink-0 mt-1">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 rounded-xl px-5 py-2.5 transition-all duration-200 hover:opacity-90"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.78rem",
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              color: "#090909",
+              background: "#f0ede6",
+              border: "none",
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Client
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: "flex", gap: "16px", marginBottom: "32px" }}>
-        {[
-          { label: "Total Clients", value: clients.length, color: "#fff" },
-          { label: "Critical",      value: critical.length, color: "#f87171" },
-          { label: "At Risk",       value: at_risk.length,  color: "#facc15" },
-          { label: "Healthy",       value: healthy.length,  color: "#22c55e" },
-          { label: "Avg Health",    value: clients.length ? Math.round(clients.reduce((a, c) => a + c.health_score, 0) / clients.length) : 0, color: "#a78bfa" },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ flex: 1, backgroundColor: "#111", border: "1px solid #1e1e1e", borderRadius: "10px", padding: "16px 20px" }}>
-            <div style={{ fontSize: "22px", fontWeight: "700", color }}>{value}</div>
-            <div style={{ fontSize: "12px", color: "#555", marginTop: "2px" }}>{label}</div>
-          </div>
-        ))}
-      </div>
+      {/* ── Stats ── */}
+      {clients.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            { label: "Total",      value: clients.length,   color: "#f0ede6"               },
+            { label: "Critical",   value: critical.length,  color: "rgba(239,68,68,0.9)"   },
+            { label: "At Risk",    value: at_risk.length,   color: "rgba(234,179,8,0.9)"   },
+            { label: "Healthy",    value: healthy.length,   color: "rgba(52,211,153,0.9)"  },
+            { label: "Avg Health", value: clients.length ? Math.round(clients.reduce((a, c) => a + c.health_score, 0) / clients.length) : 0, color: "rgba(168,85,247,0.9)" },
+          ].map(({ label, value, color }) => (
+            <div
+              key={label}
+              className="rounded-2xl border p-4"
+              style={{ background: "#0c0c0c", borderColor: "rgba(240,237,230,0.07)" }}
+            >
+              <div style={{ fontFamily: "var(--font-impact-stack)", fontSize: "2.2rem", letterSpacing: "-0.02em", color, lineHeight: 1, marginBottom: "6px" }}>
+                {value}
+              </div>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.62rem", letterSpacing: "0.25em", textTransform: "uppercase", color: "rgba(240,237,230,0.22)" }}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {loading && (
-        <div style={{ textAlign: "center", padding: "80px 0", color: "#444" }}>Loading clients...</div>
+        <div className="flex items-center justify-center py-20">
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(240,237,230,0.2)" }} className="animate-pulse">
+            Loading clients...
+          </span>
+        </div>
       )}
 
       {!loading && clients.length === 0 && (
-        <div style={{ textAlign: "center", padding: "80px 0", backgroundColor: "#111", border: "1px dashed #2a2a2a", borderRadius: "12px" }}>
-          <div style={{ fontSize: "40px", marginBottom: "16px" }}>👥</div>
-          <h3 style={{ color: "#fff", fontSize: "18px", fontWeight: "600", marginBottom: "8px" }}>No clients yet</h3>
-          <p style={{ color: "#555", fontSize: "14px", marginBottom: "24px" }}>Add your first client and Ghost will start monitoring the relationship health.</p>
-          <button onClick={() => setShowModal(true)} style={{ padding: "12px 28px", borderRadius: "8px", border: "none", backgroundColor: "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600", cursor: "pointer" }}>
-            + Add First Client
+        <div
+          className="flex flex-col items-center justify-center rounded-2xl border py-20 text-center"
+          style={{ background: "#0c0c0c", borderColor: "rgba(240,237,230,0.07)", borderStyle: "dashed" }}
+        >
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.18)" }}>
+            <Users className="h-8 w-8" style={{ color: "rgba(52,211,153,0.6)" }} />
+          </div>
+          <h3 className="mb-2" style={{ fontFamily: "var(--font-disp)", fontSize: "2.2rem", fontWeight: 300, fontStyle: "italic", color: "#f0ede6" }}>
+            No clients yet
+          </h3>
+          <p className="mb-8 max-w-sm" style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", letterSpacing: "0.05em", color: "rgba(240,237,230,0.3)", lineHeight: 1.7 }}>
+            Add your first client and Ghost will start monitoring the relationship health.
+          </p>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 rounded-xl px-6 py-3 transition-all duration-200 hover:opacity-90"
+            style={{ fontFamily: "var(--font-mono)", fontSize: "0.82rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#090909", background: "#f0ede6", border: "none" }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add First Client
           </button>
         </div>
       )}
 
       {!loading && clients.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+        <div className="space-y-10">
           {[
-            { label: "🔴 Critical", items: critical },
-            { label: "🟡 At Risk",  items: at_risk },
-            { label: "🟢 Healthy",  items: healthy },
-          ].filter(({ items }) => items.length > 0).map(({ label, items }) => (
+            { label: "Critical", items: critical, color: "rgba(239,68,68,0.6)"  },
+            { label: "At Risk",  items: at_risk,  color: "rgba(234,179,8,0.6)"  },
+            { label: "Healthy",  items: healthy,  color: "rgba(52,211,153,0.6)" },
+          ].filter(({ items }) => items.length > 0).map(({ label, items, color }) => (
             <div key={label}>
-              <h2 style={{ fontSize: "13px", fontWeight: "600", color: "#555", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: "14px" }}>
-                {label} · {items.length}
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "16px" }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-px flex-1" style={{ background: "rgba(240,237,230,0.05)" }} />
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem", letterSpacing: "0.3em", textTransform: "uppercase", color }}>
+                  {label} · {items.length}
+                </span>
+                <div className="h-px flex-1" style={{ background: "rgba(240,237,230,0.05)" }} />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {items.map(client => (
-                  <ClientCard key={client.id} client={client} onEdit={setEditingClient} />
+                  <ClientCard
+                    key={client.id}
+                    client={client}
+                    onEdit={setEditingClient}
+                    onOutreach={setOutreachClient}
+                  />
                 ))}
               </div>
             </div>
@@ -409,27 +761,33 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {showModal && (
-        <AddClientModal onClose={() => setShowModal(false)} onSave={fetchClients} />
+      {/* Modals */}
+      {showAddModal && (
+        <ClientFormModal onClose={() => setShowAddModal(false)} onSave={fetchClients} title="Add Client" submitLabel="Add Client" />
+      )}
+      {editingClient && (
+        <ClientFormModal
+          onClose={() => setEditingClient(null)}
+          onSave={fetchClients}
+          clientId={editingClient.id}
+          title={`Edit — ${editingClient.name}`}
+          submitLabel="Save Changes"
+          initialData={{
+            name: editingClient.name,
+            company: editingClient.company || "",
+            project_name: editingClient.project_name,
+            project_status: editingClient.project_status,
+            project_completion_pct: String(editingClient.project_completion_pct),
+            payment_status: editingClient.payment_status,
+            total_value: editingClient.total_value ? String(editingClient.total_value) : "",
+            last_contact_date: editingClient.last_contact_date,
+            notes: editingClient.notes || "",
+          }}
+        />
       )}
 
-      {/* TODO: Edit modal — for now just re-open add */}
-      {editingClient && (
-        <div style={{
-          position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.8)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-        }} onClick={() => setEditingClient(null)}>
-          <div style={{ backgroundColor: "#111", border: "1px solid #2a2a2a", borderRadius: "16px", padding: "32px", maxWidth: "400px", width: "100%", textAlign: "center" }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: "32px", marginBottom: "12px" }}>✏️</div>
-            <h3 style={{ color: "#fff", fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>Edit Client</h3>
-            <p style={{ color: "#555", fontSize: "13px", marginBottom: "20px" }}>Quick edit: update via the API directly, or close and re-add.</p>
-            <button onClick={() => setEditingClient(null)} style={{ padding: "10px 24px", borderRadius: "8px", border: "none", backgroundColor: "#7c3aed", color: "#fff", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Outreach panel */}
+      <OutreachPanel client={outreachClient} onClose={() => setOutreachClient(null)} />
     </div>
   );
 }

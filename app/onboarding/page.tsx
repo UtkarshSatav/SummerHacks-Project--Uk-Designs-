@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createProfile } from "../lib/api";
+import { supabase } from "../lib/supabase";
+import { toast } from "sonner";
 
 const EXPERIENCE_OPTIONS = ["junior", "mid", "senior", "expert"];
 const CLIENT_TYPES = [
@@ -20,6 +22,18 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Get auth user on mount — redirect to /auth if not signed in
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace("/auth");
+      } else {
+        setUserId(data.session.user.id);
+      }
+    });
+  }, [router]);
 
   const [name, setName] = useState("");
   const [niche, setNiche] = useState("");
@@ -27,6 +41,10 @@ export default function OnboardingPage() {
   const [skillInput, setSkillInput] = useState("");
   const [targetClient, setTargetClient] = useState("");
   const [experience, setExperience] = useState("senior");
+  
+  // Step 4 state
+  const [clientName, setClientName] = useState("");
+  const [projectName, setProjectName] = useState("");
 
   const addSkill = () => {
     const v = skillInput.trim();
@@ -42,16 +60,37 @@ export default function OnboardingPage() {
     setError("");
     if (step === 1 && (!name.trim() || !niche.trim())) { setError("Please fill in both fields."); return; }
     if (step === 2 && skills.length === 0) { setError("Add at least one skill."); return; }
+    if (step === 3 && !targetClient) { setError("Please select a target client type."); return; }
     setStep((s) => s + 1);
   };
 
   const finish = async () => {
-    if (!targetClient) { setError("Please select a target client type."); return; }
     setLoading(true);
     setError("");
     try {
-      await createProfile({ name, niche, skills, target_client: targetClient, experience });
-      fetch("http://localhost:8000/leads/scan", { method: "POST" }).catch(() => {});
+      await createProfile({ name, niche, skills, target_client: targetClient, experience, user_id: userId });
+      
+      // Optionally add client
+      if (clientName && projectName) {
+        await fetch("http://localhost:8000/clients/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-User-ID": userId ?? "" },
+          body: JSON.stringify({
+            name: clientName,
+            project_name: projectName,
+            project_status: "active",
+            project_completion_pct: 0,
+            payment_status: "current",
+            last_contact_date: new Date().toISOString().split("T")[0],
+          }),
+        });
+      }
+
+      toast.success("Ghost initialized!");
+      fetch("http://localhost:8000/leads/scan", {
+        method: "POST",
+        headers: { "X-User-ID": userId ?? "" },
+      }).catch(() => {});
       router.push("/dashboard");
     } catch {
       setError("Something went wrong. Make sure the backend is running.");
@@ -63,6 +102,7 @@ export default function OnboardingPage() {
     { num: 1, label: "About you" },
     { num: 2, label: "Your skills" },
     { num: 3, label: "Your clients" },
+    { num: 4, label: "First client" },
   ];
 
   return (
@@ -246,6 +286,43 @@ export default function OnboardingPage() {
           </div>
         )}
 
+        {/* Step 4 */}
+        {step === 4 && (
+          <div>
+            <h2 style={{ fontSize: "20px", fontWeight: "600", color: "#fff", marginBottom: "8px" }}>
+              Add your first client (optional)
+            </h2>
+            <p style={{ color: "#666", fontSize: "14px", marginBottom: "28px", lineHeight: "1.6" }}>
+              Ghost will immediately start monitoring their health. You can also skip and add this later.
+            </p>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={labelSt}>Client Name</label>
+              <input
+                style={inputSt}
+                placeholder="e.g. Acme Corp"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                autoFocus
+                onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; }}
+                onBlur={(e) => { e.target.style.borderColor = "#2a2a2a"; }}
+              />
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={labelSt}>Project Name</label>
+              <input
+                style={inputSt}
+                placeholder="e.g. Dashboard Redesign"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                onFocus={(e) => { e.target.style.borderColor = "#7c3aed"; }}
+                onBlur={(e) => { e.target.style.borderColor = "#2a2a2a"; }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Error message */}
         {error && (
           <div style={{ marginTop: "16px", padding: "10px 14px", borderRadius: "8px", backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171", fontSize: "13px" }}>
@@ -264,7 +341,7 @@ export default function OnboardingPage() {
             </button>
           ) : <div />}
 
-          {step < 3 ? (
+          {step < 4 ? (
             <button
               onClick={next}
               style={{ padding: "12px 28px", borderRadius: "8px", border: "none", background: "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600" }}
@@ -272,13 +349,22 @@ export default function OnboardingPage() {
               Continue →
             </button>
           ) : (
-            <button
-              onClick={finish}
-              disabled={loading}
-              style={{ padding: "12px 28px", borderRadius: "8px", border: "none", background: loading ? "#4a2090" : "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600", opacity: loading ? 0.8 : 1 }}
-            >
-              {loading ? "Setting up Ghost..." : "🚀 Launch Ghost"}
-            </button>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={finish}
+                disabled={loading}
+                style={{ padding: "12px 20px", borderRadius: "8px", border: "1px solid #2a2a2a", background: "transparent", color: "#888", fontSize: "14px", fontWeight: "500", opacity: loading ? 0.8 : 1 }}
+              >
+                Skip & Launch
+              </button>
+              <button
+                onClick={finish}
+                disabled={loading}
+                style={{ padding: "12px 28px", borderRadius: "8px", border: "none", background: loading ? "#4a2090" : "#7c3aed", color: "#fff", fontSize: "14px", fontWeight: "600", opacity: loading ? 0.8 : 1 }}
+              >
+                {loading ? "Setting up Ghost..." : "🚀 Launch Ghost"}
+              </button>
+            </div>
           )}
         </div>
       </div>

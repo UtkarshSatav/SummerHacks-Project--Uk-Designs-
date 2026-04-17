@@ -2,15 +2,19 @@
 
 -- Profiles
 CREATE TABLE IF NOT EXISTS profiles (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT NOT NULL,
-  skills      TEXT[],
-  niche       TEXT,
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       TEXT UNIQUE,          -- Supabase Auth user UUID
+  name          TEXT NOT NULL,
+  skills        TEXT[],
+  niche         TEXT,
   target_client TEXT,
-  location    TEXT DEFAULT 'India',
-  experience  TEXT DEFAULT 'mid',
-  created_at  TIMESTAMPTZ DEFAULT now()
+  location      TEXT DEFAULT 'India',
+  experience    TEXT DEFAULT 'mid',
+  created_at    TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add user_id column if upgrading an existing table
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_id TEXT UNIQUE;
 
 -- Leads (Reddit posts that match)
 CREATE TABLE IF NOT EXISTS leads (

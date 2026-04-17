@@ -10,6 +10,7 @@ class ProfileCreate(BaseModel):
     target_client: str
     location: Optional[str] = "India"
     experience: str  # "junior" | "mid" | "senior" | "expert"
+    user_id: Optional[str] = None
 
 
 class ClientCreate(BaseModel):

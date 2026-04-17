@@ -6,23 +6,36 @@ def calculate_health(client: dict) -> dict:
     flags = []
     opportunities = []
 
-    # Communication freshness
+    pct = client.get("project_completion_pct", 0)
+    payment = client.get("payment_status", "current")
+    project_status = client.get("project_status", "active")
+
+    # Communication freshness — windows scale with project phase.
+    # Near-complete or completed projects naturally have longer quiet periods.
     last_contact = client.get("last_contact_date")
     if last_contact:
         try:
             last = date.fromisoformat(str(last_contact))
             days = (date.today() - last).days
-            if days > 14:
-                score -= 35
-                flags.append(f"No contact in {days} days — churn risk")
-            elif days > 7:
-                score -= 15
-                flags.append(f"Going quiet ({days} days since last contact)")
+            # Longer grace period for projects >= 75% complete (review / handoff phase)
+            if pct >= 75:
+                if days > 30:
+                    score -= 25
+                    flags.append(f"No contact in {days} days — check in")
+                elif days > 18:
+                    score -= 10
+                    flags.append(f"Going quiet ({days} days since last contact)")
+            else:
+                if days > 21:
+                    score -= 30
+                    flags.append(f"No contact in {days} days — churn risk")
+                elif days > 10:
+                    score -= 12
+                    flags.append(f"Going quiet ({days} days since last contact)")
         except ValueError:
             pass
 
     # Payment health
-    payment = client.get("payment_status", "current")
     if payment == "overdue":
         score -= 25
         flags.append("Invoice overdue — follow up today")
@@ -30,13 +43,20 @@ def calculate_health(client: dict) -> dict:
         score -= 10
         flags.append("Payment at risk")
 
-    # Project momentum
-    if client.get("project_status") == "stalled":
-        score -= 20
-        flags.append("Project stalled — needs a check-in message")
+    # Project momentum — near-complete stalled projects are much less alarming
+    if project_status == "stalled":
+        if pct >= 75:
+            score -= 8
+            flags.append("Project stalled near finish line — light nudge needed")
+        else:
+            score -= 20
+            flags.append("Project stalled — needs a check-in message")
+
+    # Completion bonus: reward active, well-progressed projects
+    if pct >= 80 and project_status == "active" and payment == "current":
+        score += 5
 
     # Opportunity signals
-    pct = client.get("project_completion_pct", 0)
     if pct >= 80:
         opportunities.append("Project near completion — propose Phase 2 or ask for referral")
     if pct == 100 and payment == "current":

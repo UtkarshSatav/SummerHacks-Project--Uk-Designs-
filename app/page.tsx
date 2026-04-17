@@ -1,18 +1,28 @@
-import { redirect } from "next/navigation";
+import { SmoothScroll } from "./landing/SmoothScroll";
+import { PageTransition } from "./landing/PageTransition";
+import { Header } from "./landing/Header";
+import { Hero } from "./landing/Hero";
+import { About } from "./landing/About";
+import { Features } from "./landing/Features";
+import { Stats, Pricing } from "./landing/Stats";
+import { FinalCTA, Footer } from "./landing/FinalCTA";
 
-async function getProfile() {
-  try {
-    const res = await fetch("http://localhost:8000/profile", { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.id ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-export default async function RootPage() {
-  const profile = await getProfile();
-  if (profile) redirect("/dashboard");
-  redirect("/onboarding");
+export default function Home() {
+  return (
+    <>
+      <SmoothScroll />
+      <PageTransition />
+      
+      <Header />
+      <main className="relative">
+        <Hero />
+        <About />
+        <Features />
+        <Stats />
+        <Pricing />
+        <FinalCTA />
+      </main>
+      <Footer />
+    </>
+  );
 }

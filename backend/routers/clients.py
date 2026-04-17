@@ -1,15 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
+from typing import Optional
 from models import ClientCreate
 from services.health_scorer import calculate_health
+from services.outreach_generator import generate_client_outreach
 from database import get_supabase
+from routers.profile import get_profile_for_user
 
 router = APIRouter()
 
 
 @router.get("/")
-def get_clients():
+def get_clients(x_user_id: Optional[str] = Header(None)):
     db = get_supabase()
-    clients = db.table("clients").select("*").execute().data
+    profile = get_profile_for_user(db, x_user_id)
+    if not profile:
+        return []
+    clients = db.table("clients").select("*").eq("profile_id", profile["id"]).execute().data
     for c in clients:
         health = calculate_health(c)
         c.update(health)
@@ -17,18 +23,33 @@ def get_clients():
 
 
 @router.post("/")
-def add_client(body: ClientCreate):
+def add_client(body: ClientCreate, x_user_id: Optional[str] = Header(None)):
     db = get_supabase()
-    profile = db.table("profiles").select("id").limit(1).execute()
-    if not profile.data:
+    profile = get_profile_for_user(db, x_user_id)
+    if not profile:
         return {"error": "No profile found"}
     client_data = body.model_dump()
-    client_data["profile_id"] = profile.data[0]["id"]
+    client_data["profile_id"] = profile["id"]
     client_data["last_contact_date"] = str(client_data["last_contact_date"])
     health = calculate_health(client_data)
     client_data.update(health)
     result = db.table("clients").insert(client_data).execute()
     return result.data[0]
+
+
+@router.post("/{client_id}/outreach")
+def draft_outreach(client_id: str, x_user_id: Optional[str] = Header(None)):
+    db = get_supabase()
+    profile = get_profile_for_user(db, x_user_id)
+    if not profile:
+        return {"error": "No profile found"}
+    result = db.table("clients").select("*").eq("id", client_id).eq("profile_id", profile["id"]).execute()
+    if not result.data:
+        return {"error": "Client not found"}
+    client = result.data[0]
+    health = calculate_health(client)
+    client.update(health)
+    return generate_client_outreach(client, profile)
 
 
 @router.put("/{client_id}")

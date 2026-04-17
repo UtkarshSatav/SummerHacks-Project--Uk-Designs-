@@ -1,12 +1,33 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { supabase } from "./supabase";
+
+export const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function getHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (data.session?.user?.id) {
+    headers["X-User-ID"] = data.session.user.id;
+  }
+  return headers;
+}
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = await getHeaders();
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: { ...headers, ...(options?.headers ?? {}) },
   });
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
   return res.json();
+}
+
+/** Drop-in replacement for fetch() that auto-injects X-User-ID. Use this everywhere instead of raw fetch(). */
+export async function apiFetch(path: string, options?: RequestInit): Promise<Response> {
+  const headers = await getHeaders();
+  return fetch(`${BASE}${path}`, {
+    ...options,
+    headers: { ...headers, ...(options?.headers ?? {}) },
+  });
 }
 
 // Profile
@@ -22,9 +43,9 @@ export const updateLeadStatus = (id: string, status: string) =>
   req(`/leads/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
 
 // Clients
-export const getClients = () => req("/clients");
+export const getClients = () => req("/clients/");
 export const addClient = (body: object) =>
-  req("/clients", { method: "POST", body: JSON.stringify(body) });
+  req("/clients/", { method: "POST", body: JSON.stringify(body) });
 export const updateClient = (id: string, body: object) =>
   req(`/clients/${id}`, { method: "PUT", body: JSON.stringify(body) });
 
@@ -43,3 +64,6 @@ export const analysePrice = (body: {
 
 // Daily Brief
 export const getDailyBrief = () => req("/brief/daily");
+
+// Seed demo data
+export const seedDemo = () => req("/seed/demo", { method: "POST" });

@@ -19,17 +19,14 @@ Return JSON array only — no wrapper object:
 """
 
 
-def generate_brief() -> list:
+def generate_brief(profile: dict) -> list:
     db = get_supabase()
-    profile_result = db.table("profiles").select("*").limit(1).execute()
-    if not profile_result.data:
-        return []
-    profile = profile_result.data[0]
+    profile_id = profile["id"]
 
-    leads = db.table("leads").select("*").eq("status", "new") \
+    leads = db.table("leads").select("*").eq("profile_id", profile_id).eq("status", "new") \
         .order("intent_score", desc=True).limit(5).execute().data
-    clients = db.table("clients").select("*").execute().data
-    proposals = db.table("proposals").select("*").eq("status", "sent").execute().data
+    clients = db.table("clients").select("*").eq("profile_id", profile_id).execute().data
+    proposals = db.table("proposals").select("*").eq("profile_id", profile_id).eq("status", "sent").execute().data
 
     client_summaries = []
     for c in clients:
@@ -39,23 +36,51 @@ def generate_brief() -> list:
                 f"{c.get('name')}: {h['health_status']} — {h['health_flags'][0] if h['health_flags'] else 'check in'}"
             )
 
-    top_lead = f'"{leads[0]["title"][:80]}"' if leads else "none"
+    lead_lines = "\n".join(
+        f'  - Score {l["intent_score"]}: "{l["title"][:80]}" (r/{l.get("subreddit","?")})'
+        for l in leads
+    ) or "  - none"
+
+    proposal_lines = "\n".join(
+        f'  - "{p.get("subject","(no subject)")[:80]}"'
+        for p in proposals[:5]
+    ) or "  - none"
+
     state = f"""
-New leads detected: {len(leads)} (top score: {leads[0]["intent_score"] if leads else "N/A"})
-Top lead: {top_lead}
-Client alerts: {"; ".join(client_summaries) if client_summaries else "All clients healthy"}
-Proposals awaiting reply: {len(proposals)}
-Freelancer niche: {profile.get("niche", "")}
+Freelancer niche: {profile.get("niche", "general freelancer")}
+Freelancer name: {profile.get("name", "User")}
+
+New leads (sorted by intent score):
+{lead_lines}
+
+Client health alerts:
+  {"; ".join(client_summaries) if client_summaries else "All clients healthy"}
+
+Proposals awaiting reply ({len(proposals)} total):
+{proposal_lines}
 """
 
     response = get_ai_client().chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": BRIEF_PROMPT.format(state_summary=state)}],
-        response_format={"type": "json_object"},
     )
 
-    raw = json.loads(response.choices[0].message.content)
-    # Handle both array and wrapped object responses
+    raw_text = response.choices[0].message.content.strip()
+    # Strip markdown code fences if present
+    if raw_text.startswith("```"):
+        lines = raw_text.split("\n")
+        raw_text = "\n".join(lines[1:-1]) if len(lines) > 2 else raw_text
+
+    raw = json.loads(raw_text)
+
+    # Could be a bare array or a wrapped object
     if isinstance(raw, list):
         return raw
-    return raw.get("items", raw.get("brief", []))
+    for key in ["items", "brief", "tasks", "actions", "data", "results"]:
+        if key in raw and isinstance(raw[key], list):
+            return raw[key]
+    # Last resort: return the first list-valued key
+    for v in raw.values():
+        if isinstance(v, list):
+            return v
+    return []

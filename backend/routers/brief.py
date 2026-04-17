@@ -1,23 +1,51 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
+from typing import Optional
 from services.brief_generator import generate_brief
 from database import get_supabase
+from routers.profile import get_profile_for_user
 from datetime import date
 
 router = APIRouter()
 
 
-@router.get("/daily")
-def daily_brief():
-    db = get_supabase()
+def _get_or_generate(db, profile, bust_cache: bool = False) -> list:
     today = str(date.today())
-    cached = db.table("daily_briefs").select("*").gte("generated_at", today).limit(1).execute()
-    if cached.data:
-        return cached.data[0]["content"]
-    items = generate_brief()
-    profile = db.table("profiles").select("id").limit(1).execute()
-    if profile.data:
-        db.table("daily_briefs").insert({
-            "profile_id": profile.data[0]["id"],
-            "content": items
-        }).execute()
+    if not bust_cache:
+        cached = (
+            db.table("daily_briefs").select("*")
+            .gte("generated_at", today)
+            .eq("profile_id", profile["id"])
+            .limit(1).execute()
+        )
+        if cached.data:
+            return cached.data[0]["content"]
+    else:
+        # Delete today's cached brief so a fresh one is generated
+        db.table("daily_briefs").delete() \
+            .eq("profile_id", profile["id"]) \
+            .gte("generated_at", today).execute()
+
+    items = generate_brief(profile)
+    db.table("daily_briefs").insert({
+        "profile_id": profile["id"],
+        "content": items
+    }).execute()
     return items
+
+
+@router.get("/daily")
+def daily_brief(x_user_id: Optional[str] = Header(None)):
+    db = get_supabase()
+    profile = get_profile_for_user(db, x_user_id)
+    if not profile:
+        return []
+    return _get_or_generate(db, profile)
+
+
+@router.post("/refresh")
+def refresh_brief(x_user_id: Optional[str] = Header(None)):
+    db = get_supabase()
+    profile = get_profile_for_user(db, x_user_id)
+    if not profile:
+        return []
+    return _get_or_generate(db, profile, bust_cache=True)
