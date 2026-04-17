@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useCallback, useRef, MouseEvent } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
