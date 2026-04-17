@@ -10,8 +10,10 @@ export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
     function routeUser(userId: string) {
-      fetch("http://localhost:8000/profile/", {
+      fetch(`${apiBase}/profile/`, {
         headers: { "X-User-ID": userId },
       })
         .then(r => r.json())
