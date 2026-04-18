@@ -1,5 +1,6 @@
 from ai_client import get_ai_client
 import json
+import re
 
 PRICING_PROMPT = """
 You are a freelance pricing expert with deep knowledge of Indian and global market rates.
@@ -31,22 +32,25 @@ def analyse_pricing(description: str, client_type: str, profile: dict) -> dict:
         experience=profile.get("experience", "mid"),
     )
 
-    response = get_ai_client().chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        raw = "\n".join(lines[1:-1]) if len(lines) > 2 else raw
-
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # Extract first {...} block if model wrapped response in extra text
-        import re
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"AI returned non-JSON: {raw[:200]}")
+        response = get_ai_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            raw = "\n".join(lines[1:-1]) if len(lines) > 2 else raw
+
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                return json.loads(m.group())
+            raise ValueError(f"AI returned non-JSON: {raw[:200]}")
+
+    except Exception as e:
+        print(f"[Pricing] AI call failed: {type(e).__name__}: {e}")
+        raise

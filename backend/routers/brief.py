@@ -39,7 +39,11 @@ def daily_brief(x_user_id: Optional[str] = Header(None)):
     profile = get_profile_for_user(db, x_user_id)
     if not profile:
         return []
-    return _get_or_generate(db, profile)
+    try:
+        return _get_or_generate(db, profile)
+    except Exception as e:
+        print(f"[Brief route] {type(e).__name__}: {e}")
+        return []
 
 
 @router.post("/refresh")
@@ -48,4 +52,8 @@ def refresh_brief(x_user_id: Optional[str] = Header(None)):
     profile = get_profile_for_user(db, x_user_id)
     if not profile:
         return []
-    return _get_or_generate(db, profile, bust_cache=True)
+    try:
+        return _get_or_generate(db, profile, bust_cache=True)
+    except Exception as e:
+        print(f"[Brief refresh] {type(e).__name__}: {e}")
+        return []

@@ -77,14 +77,30 @@ def draft_proposal(lead_id: str = None, client_id: str = None, extra_context: st
         **context,
     )
 
-    response = get_ai_client().chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    full_text = response.choices[0].message.content.strip()
-    lines = full_text.split("\n")
-    subject = lines[0].replace("Subject:", "").strip() if lines and lines[0].startswith("Subject:") else "Proposal"
-    body_text = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
-
-    return {"subject": subject, "content": body_text}
+    try:
+        response = get_ai_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        full_text = response.choices[0].message.content.strip()
+        lines = full_text.split("\n")
+        subject = lines[0].replace("Subject:", "").strip() if lines and lines[0].startswith("Subject:") else "Proposal"
+        body_text = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
+        return {"subject": subject, "content": body_text}
+    except Exception as e:
+        print(f"[Proposal] AI call failed: {type(e).__name__}: {e}")
+        name = profile.get("name", "")
+        niche = profile.get("niche", "freelancer")
+        title = context.get("title", "your project")
+        return {
+            "subject": f"Re: {title[:60]}",
+            "content": (
+                f"Hi,\n\n"
+                f"I came across your post about {title[:80]} and I'm confident I can help.\n\n"
+                f"As a {niche} specialist, I've delivered similar projects and understand exactly "
+                f"what it takes to get this right.\n\n"
+                f"I'd love to learn more about your specific requirements. Would you be open to a "
+                f"quick 15-minute call this week?\n\n"
+                f"Best,\n{name}"
+            ),
+        }

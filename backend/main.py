@@ -85,8 +85,7 @@ def health():
 
 @app.get("/debug")
 def debug():
-    """Temporary debug endpoint — remove after fixing."""
-    import traceback
+    """Debug endpoint — shows DB table status + AI config."""
     from database import get_supabase
     results = {}
     for table in ["profiles", "leads", "clients", "proposals", "daily_briefs"]:
@@ -96,4 +95,21 @@ def debug():
             results[table] = f"ok ({len(r.data)} rows returned)"
         except Exception as e:
             results[table] = f"ERROR: {e}"
+    # AI config — critical for Groq to work
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    base_url = os.getenv("OPENAI_BASE_URL", "")
+    results["ai_key_set"] = bool(api_key)
+    results["ai_key_preview"] = f"{api_key[:8]}..." if api_key else "NOT SET"
+    results["ai_base_url"] = base_url if base_url else "NOT SET — will try OpenAI (wrong for Groq!)"
+    # Quick AI connectivity test
+    try:
+        from ai_client import get_ai_client
+        resp = get_ai_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": "Reply with the word OK only."}],
+            max_tokens=5,
+        )
+        results["ai_test"] = f"ok — model replied: {resp.choices[0].message.content.strip()}"
+    except Exception as e:
+        results["ai_test"] = f"FAILED: {type(e).__name__}: {e}"
     return results

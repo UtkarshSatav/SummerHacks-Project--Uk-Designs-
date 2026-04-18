@@ -67,15 +67,26 @@ def generate_followup(proposal_id: str, profile: dict) -> dict:
         days_since=days_since,
     )
 
-    response = get_ai_client().chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    full_text = response.choices[0].message.content.strip()
-    lines = full_text.split("\n")
-    subject = lines[0].replace("Subject:", "").strip() if lines[0].startswith("Subject:") else f"Re: {p.get('subject', '')}"
-    body = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
-    return {"subject": subject, "content": body}
+    try:
+        response = get_ai_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        full_text = response.choices[0].message.content.strip()
+        lines = full_text.split("\n")
+        subject = lines[0].replace("Subject:", "").strip() if lines[0].startswith("Subject:") else f"Re: {p.get('subject', '')}"
+        body = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
+        return {"subject": subject, "content": body}
+    except Exception as e:
+        print(f"[Followup] AI call failed: {type(e).__name__}: {e}")
+        return {
+            "subject": f"Re: {p.get('subject', 'our conversation')}",
+            "content": (
+                f"Hi,\n\nJust following up on my previous message — still very interested in "
+                f"helping with your project.\n\nAny questions from your end?\n\n"
+                f"Best,\n{profile.get('name', '')}"
+            ),
+        }
 
 
 def generate_client_outreach(client: dict, profile: dict) -> dict:
@@ -100,12 +111,25 @@ def generate_client_outreach(client: dict, profile: dict) -> dict:
         suggested_action=client.get("suggested_action", ""),
     )
 
-    response = get_ai_client().chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    full_text = response.choices[0].message.content.strip()
-    lines = full_text.split("\n")
-    subject = lines[0].replace("Subject:", "").strip() if lines[0].startswith("Subject:") else "Checking in"
-    body = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
-    return {"subject": subject, "content": body}
+    try:
+        response = get_ai_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        full_text = response.choices[0].message.content.strip()
+        lines = full_text.split("\n")
+        subject = lines[0].replace("Subject:", "").strip() if lines[0].startswith("Subject:") else "Checking in"
+        body = "\n".join(lines[2:]).strip() if len(lines) > 2 else full_text
+        return {"subject": subject, "content": body}
+    except Exception as e:
+        print(f"[Outreach] AI call failed: {type(e).__name__}: {e}")
+        project = client.get("project_name", "our project")
+        return {
+            "subject": f"Quick check-in on {project}",
+            "content": (
+                f"Hi {client.get('name', 'there')},\n\n"
+                f"Just wanted to check in on {project} — how are things going on your end?\n\n"
+                f"Let me know if you need anything from me to move forward.\n\n"
+                f"Best,\n{profile.get('name', '')}"
+            ),
+        }

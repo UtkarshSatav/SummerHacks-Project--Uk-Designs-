@@ -49,7 +49,18 @@ def draft_outreach(client_id: str, x_user_id: Optional[str] = Header(None)):
     client = result.data[0]
     health = calculate_health(client)
     client.update(health)
-    return generate_client_outreach(client, profile)
+    try:
+        return generate_client_outreach(client, profile)
+    except Exception as e:
+        print(f"[Outreach route] {type(e).__name__}: {e}")
+        return {
+            "subject": f"Checking in on {client.get('project_name', 'our project')}",
+            "content": (
+                f"Hi {client.get('name', 'there')},\n\nJust wanted to check in on how "
+                f"{client.get('project_name', 'our project')} is progressing.\n\n"
+                f"Let me know if you need anything from my end.\n\nBest,\n{profile.get('name', '')}"
+            ),
+        }
 
 
 @router.put("/{client_id}")
