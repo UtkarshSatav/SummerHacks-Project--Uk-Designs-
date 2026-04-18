@@ -159,9 +159,22 @@ def score_batch(posts: list, profile: dict) -> dict:
         response = get_ai_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
         )
-        raw = json.loads(response.choices[0].message.content)
+        raw_text = response.choices[0].message.content.strip()
+        # Strip markdown code fences if present
+        if raw_text.startswith("```"):
+            lines = raw_text.split("\n")
+            raw_text = "\n".join(lines[1:-1]) if len(lines) > 2 else raw_text
+        # Try to extract JSON array or object
+        try:
+            raw = json.loads(raw_text)
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r"\[.*\]", raw_text, re.DOTALL)
+            if match:
+                raw = json.loads(match.group())
+            else:
+                raise
         items = raw if isinstance(raw, list) else raw.get("results", raw.get("posts", []))
         return {item["id"]: item for item in items if "id" in item}
     except Exception as e:

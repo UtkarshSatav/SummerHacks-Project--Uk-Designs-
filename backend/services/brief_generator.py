@@ -71,7 +71,15 @@ Proposals awaiting reply ({len(proposals)} total):
         lines = raw_text.split("\n")
         raw_text = "\n".join(lines[1:-1]) if len(lines) > 2 else raw_text
 
-    raw = json.loads(raw_text)
+    try:
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError:
+        import re
+        match = re.search(r"\[.*\]", raw_text, re.DOTALL)
+        if match:
+            raw = json.loads(match.group())
+        else:
+            return []
 
     # Could be a bare array or a wrapped object
     if isinstance(raw, list):
